@@ -1,3 +1,11 @@
+drbd8 (2:8.4.2amz2-1) unstable; urgency=low
+
+  * code drop for amazon
+  * activity log multi update per transaction
+  * activity log striping
+
+ -- Lars Ellenberg <lars@linbit.com>  Mon, 19 Nov 2012 16:52:00 +0200
+
 drbd8 (2:8.4.2-0) unstable; urgency=low
 
   * New upstream release.
