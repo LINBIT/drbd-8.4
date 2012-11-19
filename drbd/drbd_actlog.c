@@ -105,8 +105,6 @@ struct update_al_work {
 };
 
 
-static int al_write_transaction(struct drbd_conf *mdev);
-
 void *drbd_md_get_buffer(struct drbd_conf *mdev)
 {
 	int r;
@@ -271,7 +269,31 @@ struct lc_element *_al_get(struct drbd_conf *mdev, unsigned int enr)
 	return al_ext;
 }
 
-void drbd_al_begin_io(struct drbd_conf *mdev, struct drbd_interval *i)
+bool drbd_al_begin_io_fastpath(struct drbd_conf *mdev, struct drbd_interval *i)
+{
+	/* for bios crossing activity log extent boundaries,
+	 * we may need to activate two extents in one go */
+	unsigned first = i->sector >> (AL_EXTENT_SHIFT-9);
+	unsigned last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT-9);
+	bool fastpath_ok = true;
+
+
+	D_ASSERT((unsigned)(last - first) <= 1);
+	D_ASSERT(atomic_read(&mdev->local_cnt) > 0);
+
+	/* FIXME figure out a fast path for bios crossing AL extent boundaries */
+	if (first != last)
+		return false;
+
+	spin_lock_irq(&mdev->al_lock);
+	fastpath_ok =
+		lc_find(mdev->resync, first/AL_EXT_PER_BM_SECT) == NULL &&
+		lc_try_get(mdev->act_log, first) != NULL;
+	spin_unlock_irq(&mdev->al_lock);
+	return fastpath_ok;
+}
+
+bool drbd_al_begin_io_prepare(struct drbd_conf *mdev, struct drbd_interval *i)
 {
 	/* for bios crossing activity log extent boundaries,
 	 * we may need to activate two extents in one go */
@@ -279,7 +301,6 @@ void drbd_al_begin_io(struct drbd_conf *mdev, struct drbd_interval *i)
 	unsigned last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT-9);
 	unsigned enr;
 	bool need_transaction = false;
-	bool locked = false;
 
 
 	D_ASSERT(first <= last);
@@ -291,11 +312,15 @@ void drbd_al_begin_io(struct drbd_conf *mdev, struct drbd_interval *i)
 		if (al_ext->lc_number != enr)
 			need_transaction = true;
 	}
+	return need_transaction;
+}
 
-	/* If *this* request was to an already active extent,
-	 * we're done, even if there are pending changes. */
-	if (!need_transaction)
-		return;
+static int al_write_transaction(struct drbd_conf *mdev);
+static int _al_write_transaction(struct drbd_conf *mdev);
+
+void drbd_al_begin_io_commit(struct drbd_conf *mdev, bool defer_to_worker)
+{
+	bool locked = false;
 
 	/* Serialize multiple transactions.
 	 * This uses test_and_set_bit, memory barrier is implicit.
@@ -303,6 +328,8 @@ void drbd_al_begin_io(struct drbd_conf *mdev, struct drbd_interval *i)
 	wait_event(mdev->al_wait,
 			mdev->act_log->pending_changes == 0 ||
 			(locked = lc_try_lock_for_transaction(mdev->act_log)));
+
+	BUG_ON(defer_to_worker && current == mdev->tconn->worker.task);
 
 	if (locked) {
 		/* drbd_al_write_transaction(mdev,al_ext,enr);
@@ -322,10 +349,11 @@ void drbd_al_begin_io(struct drbd_conf *mdev, struct drbd_interval *i)
 			rcu_read_unlock();
 
 			if (write_al_updates) {
-				al_write_transaction(mdev);
-				mdev->al_writ_cnt++;
+				if (defer_to_worker)
+					al_write_transaction(mdev);
+				else
+					_al_write_transaction(mdev);
 			}
-
 			spin_lock_irq(&mdev->al_lock);
 			/* FIXME
 			if (err)
@@ -337,6 +365,12 @@ void drbd_al_begin_io(struct drbd_conf *mdev, struct drbd_interval *i)
 		lc_unlock(mdev->act_log);
 		wake_up(&mdev->al_wait);
 	}
+}
+
+void drbd_al_begin_io(struct drbd_conf *mdev, struct drbd_interval *i)
+{
+	if (drbd_al_begin_io_prepare(mdev, i))
+		drbd_al_begin_io_commit(mdev, (current != mdev->tconn->worker.task));
 }
 
 void drbd_al_complete_io(struct drbd_conf *mdev, struct drbd_interval *i)
@@ -496,15 +530,22 @@ _al_write_transaction(struct drbd_conf *mdev)
 	crc = crc32c(0, buffer, 4096);
 	buffer->crc32c = cpu_to_be32(crc);
 
-	/* normal execution path goes through all three branches */
 	if (drbd_bm_write_hinted(mdev))
 		err = -EIO;
-		/* drbd_chk_io_error done already */
-	else if (drbd_md_sync_page_io(mdev, mdev->ldev, sector, WRITE)) {
-		err = -EIO;
-		drbd_chk_io_error(mdev, 1, DRBD_META_IO_ERROR);
-	} else {
-		mdev->al_tr_number++;
+	else {
+		bool write_al_updates;
+		rcu_read_lock();
+		write_al_updates = rcu_dereference(mdev->ldev->disk_conf)->al_updates;
+		rcu_read_unlock();
+		if (write_al_updates) {
+			if (drbd_md_sync_page_io(mdev, mdev->ldev, sector, WRITE)) {
+				err = -EIO;
+				drbd_chk_io_error(mdev, 1, DRBD_META_IO_ERROR);
+			} else {
+				mdev->al_tr_number++;
+				mdev->al_writ_cnt++;
+			}
+		}
 	}
 
 	drbd_md_put_buffer(mdev);
