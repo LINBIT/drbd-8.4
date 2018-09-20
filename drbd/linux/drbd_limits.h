@@ -122,7 +122,7 @@
   /* FIXME allow rate to be zero? */
 #define DRBD_RESYNC_RATE_MIN 1
 /* channel bonding 10 GbE, or other hardware */
-#define DRBD_RESYNC_RATE_MAX (4 << 20)
+#define DRBD_RESYNC_RATE_MAX (8 << 20)
 #define DRBD_RESYNC_RATE_DEF 250
 #define DRBD_RESYNC_RATE_SCALE 'k'  /* kilobytes */
 
