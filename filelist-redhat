@@ -9,3 +9,4 @@
 %doc obj/k-config-%verrel%dotvariant.gz
 %endif
 %config /etc/depmod.d/drbd.conf
+%config /etc/pki/linbit/SECURE-BOOT-KEY-linbit.com.der
