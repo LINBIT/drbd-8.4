@@ -1,6 +1,6 @@
 Name: drbd-kernel
 Summary: Kernel driver for DRBD
-Version: 8.4.11
+Version: 8.4.12
 Release: 1%{?dist}
 %global tarball_version %(echo "%{version}-%{?release}" | sed -e "s,%{?dist}$,,")
 Source: http://oss.linbit.com/drbd/drbd-%{tarball_version}.tar.gz
@@ -99,6 +99,9 @@ install -D misc/SECURE-BOOT-KEY-linbit.com.der $RPM_BUILD_ROOT/etc/pki/linbit/SE
 rm -rf %{buildroot}
 
 %changelog
+* Thu Oct 01 2020 Roland Kammerer <roland.kammerer@linbit.com> - 8.4.12-1
+- New upstream release.
+
 * Thu Apr 26 2018 Lars Ellenberg <lars@linbit.com> - 8.4.11-1
 - New upstream release.
 

@@ -2,6 +2,10 @@ Latest:
 ------
  For even more detail, visit https://github.com/LINBIT/drbd-8.4/commits/master
 
+8.4.12-1 (api:genl1/proto:86-101)
+-------
+ * Ship public kmod signing key. LINBIT customer RHEL7 rpms get signed with it
+
 8.4.11-1 (api:genl1/proto:86-101)
 -------
  * New efficient ZEROES command on the wire,
