@@ -88,7 +88,8 @@ doc:
 .PHONY: check-kdir
 check-kdir:
 	@if ! test -e $(KDIR)/Makefile ; then \
-		echo "    SORRY, kernel makefile not found." ;\
+		echo "    SORRY, kernel makefile not found in KDIR:" ;\
+		echo "    $(KDIR)" ;\
 	        echo "    You need to tell me a correct KDIR," ;\
 	        echo "    Or install the neccessary kernel source packages." ;\
 	        echo "" ;\
