@@ -1,4 +1,12 @@
-# DRBD 8.4
+# DRBD 8.4 - ⚠️ DEPRECATED ⚠️
+
+---
+
+This version of DRBD is no longer actively maintained. This repository will not get updated anymore.
+
+Use a more recent version of DRBD instead: https://github.com/LINBIT/drbd
+
+---
 
 This repository contains the Linux kernel code for DRBD 8.4.
 
